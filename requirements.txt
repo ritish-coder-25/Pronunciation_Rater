@@ -2,3 +2,4 @@ streamlit
 SpeechRecognition
 pronouncing
 pydub
+setuptools
