@@ -1,4 +1,3 @@
-!pip install streamlit SpeechRecognition pronouncing pydub
 import streamlit as st
 import speech_recognition as sr
 import pronouncing
