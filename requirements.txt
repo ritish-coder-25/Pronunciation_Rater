@@ -3,4 +3,3 @@ SpeechRecognition
 pronouncing
 pydub
 setuptools
-streamlit_webrtc
