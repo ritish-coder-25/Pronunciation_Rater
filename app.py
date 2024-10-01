@@ -75,4 +75,28 @@ if st.button("Evaluate Pronunciation"):
                     audio_bytes.tobytes(),
                     frame_rate=44100,
                     sample_width=audio_bytes.dtype.itemsize,
-                    channels=1
+                    channels=1)
+                audio_segment.export(temp_audio.name, format="wav")
+                temp_audio_path = temp_audio.name
+
+                # Transcribe the audio
+                transcribed_text = transcribe_audio(temp_audio_path)
+                if transcribed_text:
+                    st.write(f"Transcribed Text: {transcribed_text}")
+
+                    # Evaluate pronunciation
+                    scores, feedback = evaluate_pronunciation(reference_sentence, transcribed_text)
+                    for fb in feedback:
+                        st.write(fb)
+
+                    overall_score = sum(scores) / len(scores) if scores else 0
+                    st.write(f"Overall Pronunciation Score: {overall_score * 100:.2f}%")
+                else:
+                    st.error("Could not transcribe the audio. Please try again.")
+                
+            except Exception as e:
+                st.error(f"An error occurred while processing the audio: {e}")
+            finally:
+                os.remove(temp_audio.name)
+    else:
+        st.warning("Please record some audio first.")
