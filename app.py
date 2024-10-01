@@ -1,11 +1,13 @@
 import streamlit as st
 import speech_recognition as sr
 import pronouncing
-from pydub import AudioSegment
 import wave
 import tempfile
 import os
+import numpy as np
+from st_audiorec import st_audiorec
 
+# Function to transcribe audio from file
 def transcribe_audio(file_path):
     r = sr.Recognizer()
     with sr.AudioFile(file_path) as source:
@@ -19,8 +21,8 @@ def transcribe_audio(file_path):
         st.error(f"Could not request results; {e}")
         return None
 
+# Function to calculate phoneme score
 def phoneme_score(ref_word, spoken_word):
-    # Get phonemes for both the reference word and spoken word
     ref_phonemes = pronouncing.phones_for_word(ref_word)
     spoken_phonemes = pronouncing.phones_for_word(spoken_word)
 
@@ -30,10 +32,10 @@ def phoneme_score(ref_word, spoken_word):
     ref_phoneme_list = ref_phonemes[0].split()
     spoken_phoneme_list = spoken_phonemes[0].split()
 
-    # Calculate how many phonemes match
     matches = sum(1 for ref, spoken in zip(ref_phoneme_list, spoken_phoneme_list) if ref == spoken)
     return matches / max(len(ref_phoneme_list), len(spoken_phoneme_list))
 
+# Function to evaluate pronunciation
 def evaluate_pronunciation(reference_text, user_text):
     reference_words = reference_text.lower().split()
     user_words = user_text.lower().split()
@@ -52,16 +54,21 @@ def evaluate_pronunciation(reference_text, user_text):
 
 st.title("Live Pronunciation Assessment App")
 
-# Record and save audio
-st.write("Press the button to record your pronunciation.")
-audio_buffer = st.file_uploader("Upload a wav file:", type=["wav"])
+# Record audio from microphone
+st.write("Click on the button to record your pronunciation:")
+audio_data = st_audiorec()
 
 reference_sentence = st.text_input("Enter the reference sentence you want to pronounce:", "This is India")
 
 if st.button("Evaluate Pronunciation"):
-    if audio_buffer is not None:
+    if audio_data is not None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-            temp_audio.write(audio_buffer.read())
+            audio_bytes = np.frombuffer(audio_data, dtype=np.float32)
+            wave_obj = wave.open(temp_audio, "wb")
+            wave_obj.setnchannels(1)
+            wave_obj.setsampwidth(2)
+            wave_obj.setframerate(44100)
+            wave_obj.writeframes(audio_bytes.tobytes())
             temp_audio_path = temp_audio.name
 
         transcribed_text = transcribe_audio(temp_audio_path)
@@ -78,4 +85,4 @@ if st.button("Evaluate Pronunciation"):
 
         os.remove(temp_audio_path)
     else:
-        st.warning("Please upload an audio file first.")
+        st.warning("Please record an audio first.")
