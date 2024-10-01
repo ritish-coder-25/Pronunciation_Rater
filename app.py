@@ -1,13 +1,12 @@
 import streamlit as st
 import speech_recognition as sr
 import pronouncing
+from pydub import AudioSegment
 import wave
 import tempfile
 import os
-import numpy as np
-from st_audiorec import st_audiorec
+import concurrent.futures
 
-# Function to transcribe audio from file
 def transcribe_audio(file_path):
     r = sr.Recognizer()
     with sr.AudioFile(file_path) as source:
@@ -16,13 +15,11 @@ def transcribe_audio(file_path):
         text = r.recognize_google(audio)
         return text
     except sr.UnknownValueError:
-        st.error("Could not understand the audio.")
         return None
     except sr.RequestError as e:
         st.error(f"Could not request results; {e}")
         return None
 
-# Function to calculate phoneme score
 def phoneme_score(ref_word, spoken_word):
     ref_phonemes = pronouncing.phones_for_word(ref_word)
     spoken_phonemes = pronouncing.phones_for_word(spoken_word)
@@ -36,7 +33,6 @@ def phoneme_score(ref_word, spoken_word):
     matches = sum(1 for ref, spoken in zip(ref_phoneme_list, spoken_phoneme_list) if ref == spoken)
     return matches / max(len(ref_phoneme_list), len(spoken_phoneme_list))
 
-# Function to evaluate pronunciation
 def evaluate_pronunciation(reference_text, user_text):
     reference_words = reference_text.lower().split()
     user_words = user_text.lower().split()
@@ -53,50 +49,46 @@ def evaluate_pronunciation(reference_text, user_text):
 
     return scores, feedback
 
+def process_audio(audio_buffer, reference_sentence):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
+        audio_segment = AudioSegment.from_file(audio_buffer, format="wav")
+        audio_segment.export(temp_audio.name, format="wav")
+        temp_audio_path = temp_audio.name
+
+    transcribed_text = transcribe_audio(temp_audio_path)
+    os.remove(temp_audio_path)
+
+    if transcribed_text:
+        scores, feedback = evaluate_pronunciation(reference_sentence, transcribed_text)
+        return transcribed_text, scores, feedback
+    else:
+        return None, [], []
+
 st.title("Live Pronunciation Assessment App")
 
-# Record audio from microphone
-st.write("Click on the button below to record your pronunciation:")
-audio_data = st_audiorec()
+# Record and save audio
+st.write("Press the button to record your pronunciation.")
+audio_buffer = st.file_uploader("Upload a wav file:", type=["wav"])
 
 reference_sentence = st.text_input("Enter the reference sentence you want to pronounce:", "This is India")
 
 if st.button("Evaluate Pronunciation"):
-    if audio_data is not None:
-        st.info("Processing your recording...")
+    if audio_buffer is not None:
+        with st.spinner("Processing audio..."):
+            # Use ThreadPoolExecutor to process the audio asynchronously
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(process_audio, audio_buffer, reference_sentence)
+                transcribed_text, scores, feedback = future.result()
 
-        # Create a temporary file to save audio data
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-            try:
-                # Assuming st_audiorec returns raw PCM data, convert to wav format
-                audio_bytes = np.array(audio_data, dtype=np.float32)
-                # Pydub handles PCM data to convert it to wav format correctly
-                audio_segment = AudioSegment(
-                    audio_bytes.tobytes(),
-                    frame_rate=44100,
-                    sample_width=audio_bytes.dtype.itemsize,
-                    channels=1)
-                audio_segment.export(temp_audio.name, format="wav")
-                temp_audio_path = temp_audio.name
+            if transcribed_text:
+                st.write(f"Transcribed Text: {transcribed_text}")
 
-                # Transcribe the audio
-                transcribed_text = transcribe_audio(temp_audio_path)
-                if transcribed_text:
-                    st.write(f"Transcribed Text: {transcribed_text}")
+                for fb in feedback:
+                    st.write(fb)
 
-                    # Evaluate pronunciation
-                    scores, feedback = evaluate_pronunciation(reference_sentence, transcribed_text)
-                    for fb in feedback:
-                        st.write(fb)
-
-                    overall_score = sum(scores) / len(scores) if scores else 0
-                    st.write(f"Overall Pronunciation Score: {overall_score * 100:.2f}%")
-                else:
-                    st.error("Could not transcribe the audio. Please try again.")
-                
-            except Exception as e:
-                st.error(f"An error occurred while processing the audio: {e}")
-            finally:
-                os.remove(temp_audio.name)
+                overall_score = sum(scores) / len(scores) if scores else 0
+                st.write(f"Overall Pronunciation Score: {overall_score * 100:.2f}%")
+            else:
+                st.error("Could not transcribe the audio. Please try again.")
     else:
-        st.warning("Please record some audio first.")
+        st.warning("Please upload an audio file first.")
