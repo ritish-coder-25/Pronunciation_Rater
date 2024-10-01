@@ -16,6 +16,7 @@ def transcribe_audio(file_path):
         text = r.recognize_google(audio)
         return text
     except sr.UnknownValueError:
+        st.error("Could not understand the audio.")
         return None
     except sr.RequestError as e:
         st.error(f"Could not request results; {e}")
@@ -55,34 +56,23 @@ def evaluate_pronunciation(reference_text, user_text):
 st.title("Live Pronunciation Assessment App")
 
 # Record audio from microphone
-st.write("Click on the button to record your pronunciation:")
+st.write("Click on the button below to record your pronunciation:")
 audio_data = st_audiorec()
 
 reference_sentence = st.text_input("Enter the reference sentence you want to pronounce:", "This is India")
 
 if st.button("Evaluate Pronunciation"):
     if audio_data is not None:
+        st.info("Processing your recording...")
+
+        # Create a temporary file to save audio data
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-            audio_bytes = np.frombuffer(audio_data, dtype=np.float32)
-            wave_obj = wave.open(temp_audio, "wb")
-            wave_obj.setnchannels(1)
-            wave_obj.setsampwidth(2)
-            wave_obj.setframerate(44100)
-            wave_obj.writeframes(audio_bytes.tobytes())
-            temp_audio_path = temp_audio.name
-
-        transcribed_text = transcribe_audio(temp_audio_path)
-        if transcribed_text:
-            st.write(f"Transcribed Text: {transcribed_text}")
-
-            # Evaluate pronunciation
-            scores, feedback = evaluate_pronunciation(reference_sentence, transcribed_text)
-            for fb in feedback:
-                st.write(fb)
-            
-            overall_score = sum(scores) / len(scores) if scores else 0
-            st.write(f"Overall Pronunciation Score: {overall_score * 100:.2f}%")
-
-        os.remove(temp_audio_path)
-    else:
-        st.warning("Please record an audio first.")
+            try:
+                # Assuming st_audiorec returns raw PCM data, convert to wav format
+                audio_bytes = np.array(audio_data, dtype=np.float32)
+                # Pydub handles PCM data to convert it to wav format correctly
+                audio_segment = AudioSegment(
+                    audio_bytes.tobytes(),
+                    frame_rate=44100,
+                    sample_width=audio_bytes.dtype.itemsize,
+                    channels=1
